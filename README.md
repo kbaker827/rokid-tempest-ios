@@ -76,6 +76,27 @@ Each message is a JSON object followed by `\n`:
 - Lightning: count / avg distance (last hour)
 - Station battery voltage
 
+## SDK Setup
+
+The glasses now connect over **Bluetooth via the Rokid AI glasses SDK** — no Wi-Fi port or TCP server needed.
+
+The only thing left for each app is filling in the three credential constants (`kAppKey`, `kAppSecret`, `kAccessKey`) from [account.rokid.com/#/setting/prove](https://account.rokid.com/#/setting/prove), then running `pod install`.
+
+1. **Get credentials** at <https://account.rokid.com/#/setting/prove> and paste them into the glasses Swift file:
+   ```swift
+   private let kAppKey    = "YOUR_APP_KEY"
+   private let kAppSecret = "YOUR_APP_SECRET"
+   private let kAccessKey = "YOUR_ACCESS_KEY"
+   ```
+
+2. **Install CocoaPods dependencies** from the repo root:
+   ```bash
+   pod install
+   open *.xcworkspace   # always open the .xcworkspace, not .xcodeproj
+   ```
+
+3. *(Glasses now connect automatically over Bluetooth — no TCP port needed.)*
+
 ## Setup
 
 1. Open `TempestGlasses.xcodeproj` in Xcode 15+.
@@ -84,7 +105,7 @@ Each message is a JSON object followed by `\n`:
 4. Allow local network permission when prompted.
 5. Data starts flowing immediately — no configuration needed.
 6. **Optional**: In Settings, enter your WeatherFlow personal access token to enable REST fallback and station auto-discovery.
-7. Connect Rokid glasses to the same Wi-Fi; point the glasses TCP client at `<phone-ip>:8088`.
+7. *(Glasses now connect automatically over Bluetooth — no TCP port needed.)*
 
 ## Requirements
 
