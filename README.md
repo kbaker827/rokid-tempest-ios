@@ -44,7 +44,7 @@ Dry
 
 Lightning strike and rain-start events also trigger immediate alert messages pushed to the glasses.
 
-## Glasses protocol (TCP :8088)
+## Data sent to the glasses
 
 Each message is a JSON object followed by `\n`:
 
@@ -99,7 +99,7 @@ The only thing left for each app is filling in the three credential constants (`
 
 ## Setup
 
-1. Open `TempestGlasses.xcodeproj` in Xcode 15+.
+1. Open `TempestGlasses.xcworkspace` in Xcode 15+ (after running `pod install`) 15+.
 2. Set your team in Signing & Capabilities.
 3. Build and run on an iPhone (iOS 17+) **on the same Wi-Fi network as your Tempest Hub**.
 4. Allow local network permission when prompted.
