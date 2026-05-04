@@ -1,11 +1,17 @@
 # Tempest Glasses
 
+
+> **🔵 Connectivity Update — May 2025**
+> The glasses connection has been migrated from **raw TCP sockets** to
+> **Bluetooth via the Rokid AI glasses SDK** (`pod 'RokidSDK' ~> 1.10.2`).
+> No Wi-Fi port forwarding is needed. See **SDK Setup** below.
+
 iOS app that pulls live weather data from your [WeatherFlow Tempest](https://tempestwx.com) station and streams it to Rokid AR glasses.
 
 ## How it works
 
 ```
-Tempest Hub  ──UDP :50222──▶  iPhone (TempestGlasses)  ──TCP :8088──▶  Rokid Glasses
+Tempest Hub  ──UDP :50222──▶  iPhone (TempestGlasses)  ──Bluetooth/RokidSDK──▶ Rokid Glasses
                                      │
                               WeatherFlow REST API
                               (fallback / station info)
