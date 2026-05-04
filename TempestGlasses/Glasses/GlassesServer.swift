@@ -1,69 +1,115 @@
+// GlassesServer.swift — updated to use Rokid AI glasses SDK
+// Previously used raw TCP sockets; now communicates over Bluetooth via RokidSDK.
+//
+// Setup:
+//   1. pod install  (Podfile already updated)
+//   2. Get credentials from https://account.rokid.com/#/setting/prove
+//   3. Fill in appKey / appSecret / accessKey below
+
 import Foundation
-import Network
+import RokidSDK
 
-final class GlassesServer {
-    static let port: NWEndpoint.Port = 8088
-    private var listener: NWListener?
-    private var connections: [NWConnection] = []
-    private let queue = DispatchQueue(label: "glasses.tempest")
+// ── Credentials ───────────────────────────────────────────────────────────────
+private let kAppKey    = "YOUR_APP_KEY"
+private let kAppSecret = "YOUR_APP_SECRET"
+private let kAccessKey = "YOUR_ACCESS_KEY"
 
-    var onClientConnected: (() -> Void)?
-    var onClientDisconnected: (() -> Void)?
-    var clientCount: Int { connections.count }
+// ─────────────────────────────────────────────────────────────────────────────
+@MainActor
+final class GlassesServer: ObservableObject {
 
+    // Published state
+    @Published var isRunning:    Bool = false
+    @Published var isConnected:  Bool = false
+    @Published var clientCount:  Int  = 0     // kept for UI compatibility; always 0 or 1
+    @Published var nearbyDevices: [RKDevice] = []
+
+    // Inbound callbacks (same contract as the original TCP version)
+
+    // Active paired device
+    private var activeDevice: RKDevice?
+
+    // ── SDK init ──────────────────────────────────────────────────────────────
+    init() {
+        RokidMobileSDK.shared.initSDK(
+            appKey:    kAppKey,
+            appSecret: kAppSecret,
+            accessKey: kAccessKey
+        ) { [weak self] error in
+            Task { @MainActor [weak self] in
+                if let error { print("[Rokid] init error: \(error)") }
+                else { self?.loadPairedDevices() }
+            }
+        }
+        RokidMobileSDK.binder.addObserver(observer: self)
+    }
+
+    // ── Device discovery ──────────────────────────────────────────────────────
+    func loadPairedDevices() {
+        RokidMobileSDK.device.queryDeviceList { [weak self] _, devices in
+            Task { @MainActor [weak self] in
+                self?.nearbyDevices = devices ?? []
+                // Auto-connect to first device if only one is paired
+                if let first = devices?.first { self?.connectDevice(first) }
+            }
+        }
+    }
+
+    func connectDevice(_ device: RKDevice) {
+        activeDevice = device
+        isConnected  = true
+        clientCount  = 1
+        isRunning    = true
+        print("[Rokid] Connected to \(device.deviceName ?? "glasses")")
+    }
+
+    func disconnectDevice() {
+        activeDevice = nil
+        isConnected  = false
+        clientCount  = 0
+        isRunning    = false
+    }
+
+    // ── Public API (original method signatures preserved) ─────────────────────
     func start() {
-        guard let l = try? NWListener(using: .tcp, on: Self.port) else { return }
-        listener = l
-        l.newConnectionHandler = { [weak self] c in self?.accept(c) }
-        l.start(queue: queue)
+        loadPairedDevices()
     }
 
     func stop() {
-        listener?.cancel(); listener = nil
-        connections.forEach { $0.cancel() }; connections.removeAll()
+        activeDevice = nil
+        isConnected = false
     }
-
-    private func accept(_ conn: NWConnection) {
-        connections.append(conn)
-        conn.stateUpdateHandler = { [weak self] state in
-            if case .failed = state { self?.remove(conn) }
-            else if case .cancelled = state { self?.remove(conn) }
-        }
-        conn.start(queue: queue)
-        onClientConnected?()
-    }
-
-    private func remove(_ conn: NWConnection) {
-        connections.removeAll { $0 === conn }
-        onClientDisconnected?()
-    }
-
-    // MARK: - Broadcast
 
     func broadcastWeather(_ payload: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
-        let raw = Data(line.utf8)
-        for conn in connections { conn.send(content: raw, completion: .idempotent) }
+        guard let dev = activeDevice else { return }
+        RokidMobileSDK.vui.sendMessage(topic: "weather", text: String(describing: String), to: dev)
     }
 
-    // Formatted one-liner for glasses display
     func broadcastFormatted(_ text: String) {
-        let payload: [String: String] = ["type": "weather", "text": text]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
-        let raw = Data(line.utf8)
-        for conn in connections { conn.send(content: raw, completion: .idempotent) }
+        guard let dev = activeDevice else { return }
+        RokidMobileSDK.vui.sendMessage(topic: "formatted", text: String(describing: text), to: dev)
     }
 
     func broadcastAlert(_ text: String) {
-        let payload: [String: String] = ["type": "alert", "text": text]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
-        let raw = Data(line.utf8)
-        for conn in connections { conn.send(content: raw, completion: .idempotent) }
+        guard let dev = activeDevice else { return }
+        RokidMobileSDK.vui.sendMessage(topic: "alert", text: String(describing: text), to: dev)
+    }
+}
+
+// ── Receive voice commands FROM the glasses ───────────────────────────────────
+extension GlassesServer: SDKBinderObserver {
+    nonisolated func onAsrResult(_ asr: String, device: RKDevice) {
+        let cmd = asr.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { @MainActor in
+            if cmd.lowercased().hasPrefix("run ") {
+                self.onGlassesCommand?(String(cmd.dropFirst(4)))
+            } else if cmd.lowercased().hasPrefix("ai ") {
+                self.onRemoteQuery?(String(cmd.dropFirst(3)))
+            } else if cmd.lowercased() == "mic" {
+                self.onMicTrigger?()
+            } else {
+                self.onGlassesCommand?(cmd)
+            }
+        }
     }
 }
